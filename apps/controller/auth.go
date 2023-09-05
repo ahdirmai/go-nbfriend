@@ -43,6 +43,12 @@ var (
 		SELECT id, email, password
 		FROM auth
 		WHERE email=$1`
+
+	queryFindById = `
+		SELECT id, email, COALESCE(img_url, '')
+		FROM auth
+		WHERE id=$1
+	`
 )
 
 // Function Register
@@ -194,8 +200,53 @@ func (a *AuthContoller) Login(ctx *gin.Context) {
 }
 
 func (a *AuthContoller) Profile(ctx *gin.Context) {
-	ctx.JSON(http.StatusOK, gin.H{
-		"id": ctx.GetInt("authId"),
-	})
+	// Mendapatkan ID pengguna dari konteks yang telah ditetapkan oleh middleware CheckAuth()
+	authID := ctx.GetInt("authId")
 
+	// Query database untuk mendapatkan data email dan img_url berdasarkan authId
+	stmt, err := a.Db.Prepare(queryFindById)
+
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	row := stmt.QueryRow(authID)
+
+	var auth = Auth{}
+	var img_url sql.NullString // Menambahkan variabel untuk img_url
+
+	err = row.Scan(
+		&auth.Id,
+		&auth.Email,
+		&img_url, // Menggunakan img_url yang baru ditambahkan
+	)
+
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// Mengambil img_url jika ada, atau string kosong jika NULL
+	imgUrlValue := ""
+	if img_url.Valid {
+		imgUrlValue = img_url.String
+	}
+
+	// Membuat respons sesuai dengan format yang diinginkan
+	resp := response.ResponseAPI{
+		StatusCode: http.StatusOK,
+		Message:    "GET PROFILE SUCCESS",
+		Payload: gin.H{
+			"id":      authID,
+			"email":   auth.Email,
+			"img_url": imgUrlValue,
+		},
+	}
+
+	ctx.JSON(resp.StatusCode, resp)
 }
